@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Oficina – ordens de serviço</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Oficina</h1>
+        <p>Ordens de serviço e vistoria da lataria</p>
+      </div>
+      <button data-act="print" class="noprint">Imprimir ordem</button>
+    </header>
+    <div class="app">
+      <aside>
+        <button class="pri" data-act="new">Nova ordem</button>
+        <div
+          id="list"
+          style="display: flex; flex-direction: column; gap: 8px"
+        ></div>
+      </aside>
+      <main id="detail"></main>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  </body>
+</html>
+<script src="script.js"></script>
