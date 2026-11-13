@@ -198,7 +198,8 @@ function initView() {
     box(1.9, 0.05, 0.05, 0, 0.26, 2.17, black); // spoiler dianteiro
     box(1.9, 0.05, 0.05, 0, 0.26, -2.17, black);
 
-    // ---------- rodas ----------
+        // ---------- rodas ----------
+    const k = 0.85; // tamanho das rodas (1 = original, menor = mais baixa)
     [
         [1, 1.4],
         [-1, 1.4],
@@ -207,15 +208,16 @@ function initView() {
     ].forEach(([sx, z]) => {
         // cava escura
         const arch = new T.Mesh(
-            new T.CircleGeometry(0.46, 28),
+            new T.CircleGeometry(0.46 * k, 28),
             new T.MeshBasicMaterial({ color: 0x050607, side: T.DoubleSide }),
         );
         arch.rotation.y = (sx * Math.PI) / 2;
-        arch.position.set(sx * 1.003, 0.4, z);
+        arch.position.set(sx * 1.003, 0.43 * k, z);
         car.add(arch);
 
         const w = new T.Group();
-        w.position.set(sx * 0.93, 0.43, z);
+        w.position.set(sx * 0.93, 0.43 * k, z);
+        w.scale.setScalar(k);
         const tire = new T.Mesh(new T.TorusGeometry(0.33, 0.1, 16, 28), black);
         tire.rotation.y = Math.PI / 2;
         w.add(tire);
