@@ -198,7 +198,7 @@ function initView() {
     box(1.9, 0.05, 0.05, 0, 0.26, 2.17, black); // spoiler dianteiro
     box(1.9, 0.05, 0.05, 0, 0.26, -2.17, black);
 
-        // ---------- rodas ----------
+    // ---------- rodas ----------
     const k = 0.85; // tamanho das rodas (1 = original, menor = mais baixa)
     [
         [1, 1.4],
