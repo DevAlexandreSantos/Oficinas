@@ -37,22 +37,22 @@ const $ = (s) => document.querySelector(s);
 function zona(p) {
     const E = p.x > 0 ? "esquerda" : "direita",
         M = p.x > 0 ? "esquerdo" : "direito",
+        ax = Math.abs(p.x),
         z = p.z,
         y = p.y;
     if (z > 1.85) return "Para-choque dianteiro";
     if (z < -1.85) return "Para-choque traseiro";
-    if (y > 0.95) {
-        if (z > 0.85) return "Para-brisa";
-        if (z < -1.25) return "Vidro traseiro";
-        if (y > 1.4) return "Teto";
-        return "Porta " + E;
+    if (y > 1.47) return "Teto";
+    if (y > 1.05) {
+        if (ax > 0.7) return "Porta " + E;
+        return z > -0.2 ? "Para-brisa" : "Vidro traseiro";
     }
-    if (Math.abs(p.x) > 0.9) {
+    if (ax > 0.9) {
         if (z > 0.9) return "Paralama dianteiro " + M;
         if (z < -1.3) return "Lateral traseira " + E;
         return "Porta " + E;
     }
-    return z >= -0.5 ? "Capô" : "Porta-malas";
+    return z >= -0.2 ? "Capô" : "Porta-malas";
 }
 let V = null;
 function initView() {
@@ -64,10 +64,15 @@ function initView() {
     cam.lookAt(0, 0.6, 0);
     const ren = new T.WebGLRenderer({ antialias: true, alpha: true });
     ren.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    scene.add(new T.AmbientLight(0xffffff, 0.65));
-    const dl = new T.DirectionalLight(0xffffff, 0.8);
+    // ---------- luzes ----------
+    scene.add(new T.HemisphereLight(0xffffff, 0x6b747b, 0.75));
+    const dl = new T.DirectionalLight(0xffffff, 0.75);
     dl.position.set(4, 8, 5);
     scene.add(dl);
+    const dl2 = new T.DirectionalLight(0xbcd4ff, 0.3);
+    dl2.position.set(-5, 3, -4);
+    scene.add(dl2);
+
     const rig = new T.Group(),
         car = new T.Group(),
         pins = new T.Group();
@@ -76,45 +81,178 @@ function initView() {
     scene.add(rig);
     rig.rotation.x = 0.3;
     car.rotation.y = 0.7;
-    const mat = (c) => new T.MeshLambertMaterial({ color: c });
-    const box = (w, h, d, x, y, z, c) => {
-        const m = new T.Mesh(new T.BoxGeometry(w, h, d), mat(c));
-        m.position.set(x, y, z);
-        car.add(m);
-        return m;
+
+    // ---------- ambiente falso para reflexos ----------
+    const ek = document.createElement("canvas");
+    ek.width = 512;
+    ek.height = 256;
+    const ec = ek.getContext("2d"),
+        gr = ec.createLinearGradient(0, 0, 0, 256);
+    gr.addColorStop(0, "#cfe3f7");
+    gr.addColorStop(0.45, "#ffffff");
+    gr.addColorStop(0.5, "#9aa6ad");
+    gr.addColorStop(1, "#3a4146");
+    ec.fillStyle = gr;
+    ec.fillRect(0, 0, 512, 256);
+    ec.fillStyle = "rgba(255,255,255,.95)";
+    ec.fillRect(60, 40, 90, 30);
+    ec.fillRect(300, 30, 120, 24);
+    const env = new T.CanvasTexture(ek);
+    env.mapping = T.EquirectangularReflectionMapping;
+
+    // ---------- materiais ----------
+    const mat = (c, o) =>
+        new T.MeshPhongMaterial(Object.assign({ color: c, shininess: 40 }, o));
+    const shiny = (c, r, sh) =>
+        mat(c, {
+            specular: 0xffffff,
+            shininess: sh,
+            envMap: env,
+            reflectivity: r,
+            combine: T.MixOperation,
+        });
+    const paint = shiny(0x2f6db5, 0.35, 120),
+        chrome = shiny(0xd5dade, 0.8, 150),
+        glass = mat(0x0c1822, {
+            specular: 0xffffff,
+            shininess: 150,
+            envMap: env,
+            reflectivity: 0.55,
+            combine: T.MixOperation,
+            transparent: true,
+            opacity: 0.88,
+        }),
+        black = mat(0x15181b, { shininess: 10 }),
+        headM = mat(0xfff6d8, { emissive: 0x887744 }),
+        tailM = mat(0xd62b1f, { emissive: 0x6a1008 }),
+        plateM = mat(0xf2f2f2);
+
+    // ---------- helpers ----------
+    const add = (geo, m, x, y, z) => {
+        const mesh = new T.Mesh(geo, m);
+        mesh.position.set(x, y, z);
+        car.add(mesh);
+        return mesh;
     };
-    const hit = [
-        box(2, 0.6, 4.4, 0, 0.6, 0, 0x2f6db5),
-        box(1.7, 0.6, 2.2, 0, 1.2, -0.2, 0x2f6db5),
-        box(1.72, 0.36, 1.9, 0, 1.2, -0.2, 0x1b2733),
-    ];
-    box(0.4, 0.15, 0.05, 0.65, 0.6, 2.2, 0xfff3c0);
-    box(0.4, 0.15, 0.05, -0.65, 0.6, 2.2, 0xfff3c0);
-    box(0.4, 0.15, 0.05, 0.65, 0.6, -2.2, 0xd62b1f);
-    box(0.4, 0.15, 0.05, -0.65, 0.6, -2.2, 0xd62b1f);
+    const box = (w, h, d, x, y, z, m) =>
+        add(new T.BoxGeometry(w, h, d), m, x, y, z);
+    // perfil lateral (x = comprimento, y = altura) extrudado na largura
+    const extr = (shape, depth, bev) => {
+        const g = new T.ExtrudeGeometry(shape, {
+            depth,
+            bevelEnabled: true,
+            bevelThickness: bev,
+            bevelSize: bev,
+            bevelSegments: 4,
+            curveSegments: 14,
+        });
+        g.translate(0, 0, -depth / 2);
+        g.rotateY(-Math.PI / 2); // x do perfil -> z do mundo (frente = +z)
+        return g;
+    };
+
+    // ---------- carroceria ----------
+    const bs = new T.Shape();
+    bs.moveTo(-2.12, 0.3);
+    bs.lineTo(2.12, 0.3);
+    bs.lineTo(2.12, 0.52);
+    bs.quadraticCurveTo(2.12, 0.75, 1.85, 0.77);
+    bs.lineTo(0.8, 0.78);
+    bs.lineTo(-1.5, 0.78);
+    bs.quadraticCurveTo(-2.12, 0.74, -2.12, 0.5);
+    bs.lineTo(-2.12, 0.3);
+    const body = add(extr(bs, 1.84, 0.08), paint, 0, 0, 0);
+
+    // ---------- cabine (vidros) + teto ----------
+    const cs = new T.Shape();
+    cs.moveTo(0.95, 0.74);
+    cs.lineTo(0.3, 1.38);
+    cs.lineTo(-0.85, 1.38);
+    cs.lineTo(-1.45, 0.74);
+    cs.lineTo(0.95, 0.74);
+    const cabin = add(extr(cs, 1.5, 0.06), glass, 0, 0, 0);
+    const roof = box(1.55, 0.06, 1.2, 0, 1.43, -0.27, paint);
+    const hit = [body, cabin, roof];
+
+    // ---------- detalhes laterais ----------
+    [1, -1].forEach((s) => {
+        [0.7, -0.3, -1.3].forEach((z) =>
+            box(0.02, 0.42, 0.025, s * 1.005, 0.55, z, black),
+        );
+        [0.4, -0.6].forEach((z) =>
+            box(0.025, 0.04, 0.2, s * 1.01, 0.68, z, chrome),
+        );
+        box(0.04, 0.62, 0.09, s * 0.82, 1.07, -0.3, black); // coluna B
+        box(0.14, 0.1, 0.2, s * 0.97, 1.0, 0.6, paint); // retrovisor
+    });
+
+    // ---------- frente e traseira ----------
+    [1, -1].forEach((s) => {
+        box(0.55, 0.13, 0.06, s * 0.68, 0.58, 2.19, headM);
+        box(0.55, 0.12, 0.06, s * 0.7, 0.6, -2.19, tailM);
+    });
+    box(0.8, 0.16, 0.06, 0, 0.48, 2.19, black); // grade
+    box(1.2, 0.08, 0.06, 0, 0.33, 2.19, black); // entrada de ar
+    box(0.5, 0.13, 0.04, 0, 0.4, 2.215, plateM); // placa dianteira
+    box(0.5, 0.13, 0.04, 0, 0.45, -2.215, plateM); // placa traseira
+    box(1.9, 0.05, 0.05, 0, 0.26, 2.17, black); // spoiler dianteiro
+    box(1.9, 0.05, 0.05, 0, 0.26, -2.17, black);
+
+    // ---------- rodas ----------
     [
         [1, 1.4],
         [-1, 1.4],
         [1, -1.4],
         [-1, -1.4],
-    ].forEach(([x, z]) => {
-        const w = new T.Mesh(
-            new T.CylinderGeometry(0.42, 0.42, 0.3, 20),
-            mat(0x111111),
+    ].forEach(([sx, z]) => {
+        // cava escura
+        const arch = new T.Mesh(
+            new T.CircleGeometry(0.46, 28),
+            new T.MeshBasicMaterial({ color: 0x050607, side: T.DoubleSide }),
         );
-        w.rotation.z = Math.PI / 2;
-        w.position.set(x, 0.42, z);
+        arch.rotation.y = (sx * Math.PI) / 2;
+        arch.position.set(sx * 1.003, 0.4, z);
+        car.add(arch);
+
+        const w = new T.Group();
+        w.position.set(sx * 0.93, 0.43, z);
+        const tire = new T.Mesh(new T.TorusGeometry(0.33, 0.1, 16, 28), black);
+        tire.rotation.y = Math.PI / 2;
+        w.add(tire);
+        const rim = new T.Mesh(new T.CylinderGeometry(0.25, 0.25, 0.18, 24), chrome);
+        rim.rotation.z = Math.PI / 2;
+        w.add(rim);
+        for (let i = 0; i < 5; i++) {
+            const sp = new T.Mesh(new T.BoxGeometry(0.03, 0.04, 0.46), black);
+            sp.position.x = sx * 0.095;
+            sp.rotation.x = (i * Math.PI) / 5;
+            w.add(sp);
+        }
+        const hub = new T.Mesh(new T.CylinderGeometry(0.06, 0.06, 0.2, 12), chrome);
+        hub.rotation.z = Math.PI / 2;
+        w.add(hub);
         car.add(w);
     });
+
+    // ---------- sombra suave no chão ----------
+    const sk = document.createElement("canvas");
+    sk.width = sk.height = 128;
+    const sc = sk.getContext("2d"),
+        rg = sc.createRadialGradient(64, 64, 10, 64, 64, 64);
+    rg.addColorStop(0, "rgba(0,0,0,.45)");
+    rg.addColorStop(1, "rgba(0,0,0,0)");
+    sc.fillStyle = rg;
+    sc.fillRect(0, 0, 128, 128);
     const g = new T.Mesh(
-        new T.CircleGeometry(3.2, 32),
+        new T.PlaneGeometry(6.5, 6.5),
         new T.MeshBasicMaterial({
-            color: 0,
+            map: new T.CanvasTexture(sk),
             transparent: true,
-            opacity: 0.14,
+            depthWrite: false,
         }),
     );
     g.rotation.x = -Math.PI / 2;
+    g.scale.set(0.75, 1.1, 1);
     g.position.y = 0.01;
     rig.add(g);
     const cv = ren.domElement,
